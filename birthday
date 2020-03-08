@@ -1,0 +1,140 @@
+#!/usr/bin/env php
+<?php declare(strict_types=1);
+
+/*
+ * Copyright (c) 2020, Vladimir Vrzić <vvrzic@gmail.com>
+ * All rights reserved.
+ * Released under the terms of 3-clause BSD License.
+ */
+
+/**
+* Person is defined by (name, birthday, timezone)
+*/
+class Person {
+  public string $name;
+  public string $sBirthDate;
+  public string $sTimeZone;
+  public DateTime $birthday;
+
+  function __construct(string $name, string $birthdate, string $timezone) {
+    $this->name = $name;
+    $this->sBirthDate = $birthdate;
+    $this->sTimeZone = $timezone;
+    $tz = new DateTimeZone($this->sTimeZone);
+    $this->birthday = new DateTime($this->sBirthDate, $tz);
+  }
+}
+
+/**
+* Birthday warns about the upcoming birthday for a given Person
+*/
+class Birthday {
+  // $now is our reference timestamp (can be injected from tests)
+  public DateTime $now;
+  public Person $person;
+  public int $age;
+  public int $nextAge;
+  // is $now this person's birthday
+  public bool $isBirthday;
+  // interval until next birthday, or if $isBirthday, until birthday ends
+  public DateInterval $interval;
+
+ /*
+  *  Previous/current birthday starts at time t1 (midnight on birthday),
+  *  ends at time t2 (midnight the next day). Similarly, their next birthday
+  *  starts at time t3, ends at t4. We obtain t1 by adding the person's age 
+  *  in years (on current date/time $t) to midnight of their birthdate in their
+  *  time zone.
+  *
+  *  -----t1---t2--------------------t3---t4-----> time
+  *      prev bday                  next bday
+  *
+  *  Current date/time $t can be either:
+  *  a) between t1 and t2, in which case we will calculate time until t2
+  *     -- end of birthday, or
+  *  b) between t2 and t3, in which case we will calculate time until t3
+  *     -- start of their next birthday.
+  */
+  public function __construct(Person $person, string $t = 'now') {
+    $this->person = $person;
+    $this->now = new DateTime($t);
+    $fromBirth = $this->person->birthday->diff($this->now);
+    $this->age = $fromBirth->y;
+    $this->nextAge = $this->age + 1;
+    $ageInterval = new DateInterval('P' . $this->age . 'Y');
+    $prevBdayStart = (clone $this->person->birthday)->add($ageInterval);
+    $oneDay = new DateInterval('P1D');
+    $prevBdayEnd = (clone $prevBdayStart)->add($oneDay);
+    $oneYear = new DateInterval('P1Y');
+    $nextBdayStart = (clone $prevBdayStart)->add($oneYear);
+    $this->isBirthday = $prevBdayEnd > $this->now;
+    $this->interval = $this->isBirthday ? $prevBdayEnd->diff($this->now) :
+                                          $nextBdayStart->diff($this->now);
+  }
+
+  public function pretty(): string {
+    // TODO string localization
+    $prettyInterval = self::prettyDateInterval($this->interval);
+    return $this->isBirthday ?
+      "{$this->person->name} is {$this->age} years old today ({$prettyInterval} remaining in {$this->person->sTimeZone})" :
+      "{$this->person->name} is {$this->nextAge} years old in {$prettyInterval} in {$this->person->sTimeZone}";
+  }
+
+  public static function prettyDateInterval(DateInterval $ti): string {
+    // TODO string localization
+    $loc = [
+      'years' => 'years',
+      'months' => 'months',
+      'days' => 'days',
+      'hours' => 'hours',
+      'minutes' => 'minutes',
+      'seconds' => 'seconds'
+    ];
+    $s = '';
+    $sep = '';
+    if ($ti->y > 0) {
+      $s .= $ti->y . ' ' . $loc['years'];
+      $sep = ', ';
+    }
+    if ($ti->m > 0) {
+      $s .= $sep . $ti->m . ' ' . $loc['months'];
+      $sep = ', ';
+    }
+    if ($ti->d > 0) {
+      $s .= $sep . $ti->d . ' ' . $loc['days'];
+      $sep = ', ';
+    }
+    if ($ti->h > 0 && $sep === '') {
+      $s .= $sep . $ti->h . ' ' . $loc['hours'];
+      $sep = ', ';
+    }
+    if ($ti->i > 0 && $sep === '') {
+      $s .= $sep . $ti->i . ' ' . $loc['minutes'];
+    }
+    return $s;
+  }
+}
+
+/* CLI tool main entry point */
+
+const EXIT_ARGS_ERROR = 1;
+const EXIT_PARSE_ERROR = 2;
+
+if ($argc < 4) {
+  fwrite(STDERR, "Usage: {$argv[0]} <name> <birthday> <timezone> [reftime]" . PHP_EOL);
+  exit(EXIT_ARGS_ERROR);
+}
+
+$name = $argv[1];
+$birthday = $argv[2];
+$tz = $argv[3];
+$reftime = $argv[4] ?? 'now';
+
+try {
+  $person = new Person($name, $birthday, $tz);
+  $b = new Birthday($person, $reftime);
+  fwrite(STDOUT, $b->pretty() . PHP_EOL);
+} catch (Throwable $e) {
+  fwrite(STDERR, $e->getMessage() . PHP_EOL);
+  exit(EXIT_PARSE_ERROR);
+}
