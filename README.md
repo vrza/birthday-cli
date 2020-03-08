@@ -1,4 +1,4 @@
-# birthday-cli
+# birthday
 
 A command-line program that warns about upcoming birthdays.
 
@@ -9,5 +9,5 @@ A command-line program that warns about upcoming birthdays.
 ## Description
 
 If a birthday is today, program warns about number of hours remaining
-until end of birthday, otherwise it warsn about number of months/days
+until end of birthday, otherwise it warns about number of months/days
 left until their next birthday.
